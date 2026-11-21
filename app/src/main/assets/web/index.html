@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HA TV – ustawienia</title>
+<style>
+  :root { --bg:#0b1722; --card:#13263a; --line:#21405c; --txt:#e8f1f8; --mut:#8fb0c8; --acc:#18bcf2; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--txt); }
+  header { padding:16px 22px; border-bottom:1px solid var(--line); display:flex; gap:14px; align-items:baseline; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:22px; }
+  #status { color:var(--mut); font-size:14px; }
+  #status.ok { color:#81c784; }
+  main { padding:0 22px 40px; max-width:1100px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin-top:14px; }
+  .card h2 { margin:0 0 12px; font-size:17px; }
+  label.f { display:block; color:var(--mut); font-size:13px; margin:10px 0 4px; }
+  input[type=text], input[type=password], input[type=number], select {
+    background:#0d1d2c; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:9px 10px; font-size:15px; width:100%;
+  }
+  button { background:#21405c; color:var(--txt); border:none; padding:9px 14px; border-radius:8px; cursor:pointer; font-size:14px; }
+  button.main { background:var(--acc); color:#04212e; font-weight:600; }
+  button.sm { padding:5px 9px; font-size:13px; }
+  .btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:760px) { .two { grid-template-columns:1fr; } }
+  .list { max-height:420px; overflow:auto; border:1px solid var(--line); border-radius:8px; margin-top:8px; }
+  .item { display:flex; align-items:center; gap:8px; padding:7px 10px; border-top:1px solid #1a3149; font-size:14px; }
+  .item:first-child { border-top:none; }
+  .item .n { flex:1; min-width:0; }
+  .item .n small { display:block; color:var(--mut); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .item .s { color:#ffd54f; font-size:13px; white-space:nowrap; }
+  .item.hdr { background:#0f2234; color:#ffd54f; font-weight:600; }
+  .hint { color:var(--mut); font-size:13px; line-height:1.5; margin-top:8px; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .chk { display:flex; align-items:center; gap:8px; padding:6px 0; font-size:15px; }
+  table.keys td { padding:4px 12px 4px 0; font-size:14px; } table.keys td:first-child { color:#ffd54f; white-space:nowrap; }
+  #toast { position:fixed; right:16px; bottom:16px; background:var(--acc); color:#04212e; padding:10px 14px; border-radius:8px; font-weight:600; opacity:0; transition:opacity .2s; }
+  #toast.show { opacity:1; } #toast.err { background:#e57373; }
+</style>
+</head>
+<body>
+<header><h1>HA TV</h1><span id="ver"></span><span id="status"></span></header>
+<main>
+  <div class="card">
+    <h2>1. Połączenie z Home Assistantem</h2>
+    <label class="f">Adres HA (najlepiej lokalny IP)</label>
+    <input id="url" type="text" placeholder="http://192.168.1.10:8123" autocapitalize="off">
+    <label class="f">Token długoterminowy</label>
+    <input id="token" type="password" placeholder="wklej token">
+    <div class="btns">
+      <button class="main" onclick="saveConn()">Zapisz</button>
+      <button onclick="testConn()">Testuj połączenie</button>
+    </div>
+    <div class="hint">Token: w Home Assistancie kliknij swój profil (lewy dolny róg) → zakładka <b>Bezpieczeństwo</b> → <b>Tokeny długoterminowe</b> → <b>Utwórz token</b>. Token zapisuje się tylko w telewizorze i nie jest pokazywany na tej stronie.</div>
+  </div>
+
+  <div class="card">
+    <h2>2. Kafelki encji na telewizorze</h2>
+    <div class="two">
+      <div>
+        <div class="row"><input id="q" type="text" placeholder="Szukaj encji (nazwa lub id)…" oninput="renderAll()">
+          <select id="dom" style="width:170px" onchange="renderAll()"></select></div>
+        <div class="list" id="all"></div>
+      </div>
+      <div>
+        <div class="row"><input id="hdr" type="text" placeholder="Nagłówek grupy, np. Salon"><button onclick="addHeader()">+ Nagłówek</button></div>
+        <div class="list" id="fav"></div>
+        <div class="hint">Kolejność jak na telewizorze. Gdy lista jest pusta, telewizor pokazuje automatycznie światła, przełączniki, rolety, ogrzewanie itd.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>3. Dashboardy (karty jak na PC)</h2>
+    <div id="dash">Ładowanie…</div>
+    <label class="f">Po uruchomieniu aplikacji otwórz</label>
+    <select id="start" onchange="save({start:this.value})"></select>
+    <div class="hint">Zaznacz dashboardy, które mają być w zakładkach na górze ekranu. Nic nie zaznaczone = wszystkie.</div>
+  </div>
+
+  <div class="card">
+    <h2>4. Wygląd i pilot</h2>
+    <div class="two">
+      <div><label class="f">Kafelków w rzędzie</label><input id="columns" type="number" min="2" max="8" onchange="save({columns:+this.value})"></div>
+      <div><label class="f">Wysokość kafelka (60–200)</label><input id="tile_size" type="number" min="60" max="200" step="10" onchange="save({tile_size:+this.value})"></div>
+      <div><label class="f">Powiększenie dashboardów % (50–200)</label><input id="zoom" type="number" min="50" max="200" step="10" onchange="save({zoom:+this.value})"></div>
+      <div><label class="f">Szybkość kursora % (30–300)</label><input id="cursor_speed" type="number" min="30" max="300" step="10" onchange="save({cursor_speed:+this.value})"></div>
+    </div>
+    <table class="keys" style="margin-top:14px">
+      <tr><td>Kafelki: OK</td><td>włącz/wyłącz, otwórz/zamknij, uruchom scenę…</td></tr>
+      <tr><td>Kafelki: długie OK / MENU / żółty</td><td>szczegóły: jasność, temperatura, pozycja, głośność (◀ ▶)</td></tr>
+      <tr><td>Kafelki: P+ / P−</td><td>przewijanie listy</td></tr>
+      <tr><td>Dashboard: strzałki</td><td>kursor (przytrzymaj = szybciej, przy krawędzi przewija)</td></tr>
+      <tr><td>Dashboard: OK</td><td>kliknięcie (przytrzymanie = długie naciśnięcie)</td></tr>
+      <tr><td>Dashboard: P+ / P− / 1–9</td><td>poprzednia / następna / wybrana karta</td></tr>
+      <tr><td>Dashboard: ⏪ ⏩</td><td>przewijanie strony</td></tr>
+      <tr><td>WSTECZ</td><td>zamknij okno / wróć do kafelków</td></tr>
+    </table>
+  </div>
+</main>
+<div id="toast"></div>
+<script>
+let C = null, ALL = [], DASH = [];
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function toast(m, err) { const t = $("toast"); t.textContent = m; t.className = "show" + (err ? " err" : ""); clearTimeout(t._t); t._t = setTimeout(() => t.className = "", 1800); }
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
+  const j = await r.json().catch(() => ({ ok:false, error:"brak odpowiedzi" }));
+  if (!j.ok) toast(j.error || "Błąd", true);
+  return j;
+}
+async function save(patch) { const j = await api("/settings", patch); if (j.ok) { C = j.config; toast("Zapisano"); } return j; }
+
+async function load() {
+  const j = await api("/config"); if (!j.ok) return;
+  C = j.config;
+  $("ver").textContent = "wersja " + j.version;
+  $("status").textContent = j.status; $("status").className = j.connected ? "ok" : "";
+  $("url").value = C.url || "";
+  $("token").placeholder = C.token_set ? "zapisany – wklej nowy, aby zmienić" : "wklej token";
+  for (const k of ["columns","tile_size","zoom","cursor_speed"]) $(k).value = C[k];
+  renderFav();
+  if (j.connected) { loadEntities(); loadDash(); } else { $("all").innerHTML = '<div class="item">Najpierw połącz się z HA</div>'; $("dash").textContent = "Najpierw połącz się z HA"; renderStart(); }
+}
+async function saveConn() {
+  const j = await save({ url:$("url").value.trim(), token:$("token").value.trim() });
+  if (j.ok) { $("token").value = ""; setTimeout(load, 2500); }
+}
+async function testConn() {
+  const j = await api("/test", { url:$("url").value.trim(), token:$("token").value.trim() });
+  if (j.ok) toast("Połączono: " + j.message);
+}
+
+// ---------- encje ----------
+async function loadEntities() {
+  const j = await api("/entities"); if (!j.ok) return;
+  ALL = j.entities;
+  const doms = [...new Set(ALL.map(e => e.domain))].sort();
+  $("dom").innerHTML = '<option value="">Wszystkie typy</option>' + doms.map(d => `<option>${esc(d)}</option>`).join("");
+  renderAll(); renderFav();
+}
+function renderAll() {
+  const q = $("q").value.toLowerCase(), d = $("dom").value, fav = new Set(C.favorites || []);
+  const list = ALL.filter(e => (!d || e.domain === d) && (!q || e.name.toLowerCase().includes(q) || e.entity_id.includes(q))).slice(0, 300);
+  $("all").innerHTML = list.map(e => `<div class="item"><div class="n">${esc(e.name)}<small>${esc(e.entity_id)}</small></div>
+    <span class="s">${esc(e.state)}</span>${fav.has(e.entity_id) ? '<button class="sm" disabled>✓</button>' : `<button class="sm" onclick="addFav('${esc(e.entity_id)}')">+ Dodaj</button>`}</div>`).join("")
+    || '<div class="item">Brak wyników</div>';
+}
+function renderFav() {
+  const f = C.favorites || [];
+  const byId = Object.fromEntries(ALL.map(e => [e.entity_id, e]));
+  $("fav").innerHTML = f.map((id, i) => {
+    const hdr = id.startsWith("#"), e = byId[id];
+    return `<div class="item ${hdr ? "hdr" : ""}"><div class="n">${hdr ? esc(id.slice(1)) : esc(e ? e.name : id)}${hdr ? "" : `<small>${esc(id)}</small>`}</div>
+      <button class="sm" onclick="mv(${i},-1)">↑</button><button class="sm" onclick="mv(${i},1)">↓</button><button class="sm" onclick="rm(${i})">✕</button></div>`;
+  }).join("") || '<div class="item">Brak – telewizor pokaże encje automatycznie</div>';
+}
+async function setFav(list) { C.favorites = list; renderFav(); renderAll(); await save({ favorites:list }); }
+function addFav(id) { setFav([...(C.favorites || []), id]); }
+function addHeader() { const t = $("hdr").value.trim(); if (!t) return; $("hdr").value = ""; setFav([...(C.favorites || []), "#" + t]); }
+function rm(i) { const l = [...C.favorites]; l.splice(i, 1); setFav(l); }
+function mv(i, d) { const l = [...C.favorites]; const j = i + d; if (j < 0 || j >= l.length) return; [l[i], l[j]] = [l[j], l[i]]; setFav(l); }
+
+// ---------- dashboardy ----------
+async function loadDash() {
+  const j = await api("/dashboards"); if (!j.ok) return;
+  DASH = j.dashboards;
+  const chosen = new Set((C.dashboards || []).map(d => d.path));
+  $("dash").innerHTML = DASH.map(d => `<label class="chk"><input type="checkbox" data-p="${esc(d.path)}" ${chosen.has(d.path) ? "checked" : ""} onchange="saveDash()"> ${esc(d.title)} <small style="color:var(--mut)">(${esc(d.path)})</small></label>`).join("") || "Brak dashboardów";
+  renderStart();
+}
+function saveDash() {
+  const sel = [...document.querySelectorAll("#dash input:checked")].map(c => DASH.find(d => d.path === c.dataset.p));
+  save({ dashboards: sel }).then(renderStart);
+}
+function renderStart() {
+  const list = (C.dashboards && C.dashboards.length) ? C.dashboards : DASH;
+  $("start").innerHTML = '<option value="tiles">Kafelki encji</option>' + list.map(d => `<option value="${esc(d.path)}" ${C.start === d.path ? "selected" : ""}>Dashboard: ${esc(d.title)}</option>`).join("");
+  if (C.start === "tiles") $("start").value = "tiles";
+}
+load();
+setInterval(async () => { try { const j = await (await fetch("/config")).json(); $("status").textContent = j.status; $("status").className = j.connected ? "ok" : ""; } catch (e) {} }, 5000);
+</script>
+</body>
+</html>
