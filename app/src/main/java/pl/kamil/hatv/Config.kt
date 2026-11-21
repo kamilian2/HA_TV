@@ -33,6 +33,8 @@ class Config(ctx: Context) {
     val columns: Int get() = synchronized(this) { data.optInt("columns", 4).coerceIn(2, 8) }
     val tileSize: Int get() = synchronized(this) { data.optInt("tile_size", 100).coerceIn(60, 200) }
     val zoom: Int get() = synchronized(this) { data.optInt("zoom", 100).coerceIn(50, 200) }
+    /** Szerokość strony dashboardu w px – jak okno przeglądarki na PC. */
+    val pageWidth: Int get() = synchronized(this) { data.optInt("page_width", 1920).coerceIn(800, 3840) }
     val cursorSpeed: Int get() = synchronized(this) { data.optInt("cursor_speed", 100).coerceIn(30, 300) }
     val start: String get() = synchronized(this) { data.optString("start", "tiles") }
 
@@ -74,6 +76,6 @@ class Config(ctx: Context) {
         if (!it.has("favorites")) it.put("favorites", JSONArray())
         if (!it.has("dashboards")) it.put("dashboards", JSONArray())
         it.put("columns", columns); it.put("tile_size", tileSize); it.put("zoom", zoom)
-        it.put("cursor_speed", cursorSpeed); it.put("start", start)
+        it.put("cursor_speed", cursorSpeed); it.put("start", start); it.put("page_width", pageWidth)
     }
 }

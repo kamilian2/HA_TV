@@ -85,15 +85,21 @@
     <div class="two">
       <div><label class="f">Kafelków w rzędzie</label><input id="columns" type="number" min="2" max="8" onchange="save({columns:+this.value})"></div>
       <div><label class="f">Wysokość kafelka (60–200)</label><input id="tile_size" type="number" min="60" max="200" step="10" onchange="save({tile_size:+this.value})"></div>
-      <div><label class="f">Powiększenie dashboardów % (50–200)</label><input id="zoom" type="number" min="50" max="200" step="10" onchange="save({zoom:+this.value})"></div>
-      <div><label class="f">Szybkość kursora % (30–300)</label><input id="cursor_speed" type="number" min="30" max="300" step="10" onchange="save({cursor_speed:+this.value})"></div>
+      <div><label class="f">Dashboard – szerokość strony jak na PC (mniej = większe karty)</label>
+        <select id="page_width" onchange="save({page_width:+this.value})">
+          <option value="1280">1280 px – duże karty (2 kolumny)</option>
+          <option value="1600">1600 px</option>
+          <option value="1920">1920 px – jak monitor Full HD (3 kolumny)</option>
+          <option value="2560">2560 px – jak monitor 2K (4 kolumny)</option>
+        </select></div>
     </div>
     <table class="keys" style="margin-top:14px">
       <tr><td>Kafelki: OK</td><td>włącz/wyłącz, otwórz/zamknij, uruchom scenę…</td></tr>
       <tr><td>Kafelki: długie OK / MENU / żółty</td><td>szczegóły: jasność, temperatura, pozycja, głośność (◀ ▶)</td></tr>
       <tr><td>Kafelki: P+ / P−</td><td>przewijanie listy</td></tr>
-      <tr><td>Dashboard: strzałki</td><td>kursor (przytrzymaj = szybciej, przy krawędzi przewija)</td></tr>
-      <tr><td>Dashboard: OK</td><td>kliknięcie (przytrzymanie = długie naciśnięcie)</td></tr>
+      <tr><td>Dashboard: strzałki</td><td>przejście do sąsiedniej karty, przełącznika lub przycisku (niebieska ramka)</td></tr>
+      <tr><td>Dashboard: ◀ ▶ na suwaku</td><td>zmiana wartości</td></tr>
+      <tr><td>Dashboard: OK</td><td>kliknięcie zaznaczonego elementu (przytrzymanie = długie naciśnięcie)</td></tr>
       <tr><td>Dashboard: P+ / P− / 1–9</td><td>poprzednia / następna / wybrana karta</td></tr>
       <tr><td>Dashboard: ⏪ ⏩</td><td>przewijanie strony</td></tr>
       <tr><td>WSTECZ</td><td>zamknij okno / wróć do kafelków</td></tr>
@@ -121,7 +127,7 @@ async function load() {
   $("status").textContent = j.status; $("status").className = j.connected ? "ok" : "";
   $("url").value = C.url || "";
   $("token").placeholder = C.token_set ? "zapisany – wklej nowy, aby zmienić" : "wklej token";
-  for (const k of ["columns","tile_size","zoom","cursor_speed"]) $(k).value = C[k];
+  for (const k of ["columns","tile_size","page_width"]) $(k).value = C[k];
   renderFav();
   if (j.connected) { loadEntities(); loadDash(); } else { $("all").innerHTML = '<div class="item">Najpierw połącz się z HA</div>'; $("dash").textContent = "Najpierw połącz się z HA"; renderStart(); }
 }

@@ -4,7 +4,7 @@ Aplikacja na Android TV do podglądu i sterowania Home Assistantem pilotem.
 
 * **Kafelki encji** – światła, przełączniki, rolety, ogrzewanie, multimedia, sceny, czujniki…
   OK = włącz/wyłącz (otwórz/zamknij, uruchom), długie OK / MENU = szczegóły (jasność, temperatura, pozycja, głośność ◀ ▶).
-* **Dashboardy jak na PC** – prawdziwy interfejs Home Assistanta z kursorem sterowanym strzałkami,
+* **Dashboardy jak na PC** – prawdziwy interfejs Home Assistanta w układzie jak na monitorze (1920 px), sterowany strzałkami pilota,
   P+ / P− przełącza karty (widoki), OK klika.
 * **Wbudowany serwer ustawień** – `http://IP_TELEWIZORA:5003` (adres HA, token, wybór kafelków i dashboardów).
 * Połączenie przez WebSocket – stany zmieniają się na ekranie od razu.
@@ -28,7 +28,7 @@ Aplikacja na Android TV do podglądu i sterowania Home Assistantem pilotem.
 | Kafelki | OK | główna akcja |
 | Kafelki | długie OK / MENU / żółty | szczegóły encji |
 | Kafelki | P+ / P− | przewijanie |
-| Dashboard | strzałki | kursor |
+| Dashboard | strzałki | przejście między kartami i przyciskami (niebieska ramka) |
 | Dashboard | OK | kliknięcie (przytrzymanie = długie) |
 | Dashboard | P+ / P− / 1–9 | karty |
 | Dashboard | ⏪ ⏩ | przewijanie |

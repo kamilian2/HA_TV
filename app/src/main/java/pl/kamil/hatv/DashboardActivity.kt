@@ -35,8 +35,9 @@ import org.json.JSONObject
  * Dashboard Home Assistanta – dokładnie taki jak na PC – w przeglądarce wbudowanej w aplikację.
  * Logowanie tokenem (tryb „external auth”, jak w oficjalnej aplikacji HA).
  *
- *  strzałki      – kursor (przytrzymanie przyspiesza; przy krawędzi przewija stronę)
- *  OK            – kliknięcie (przytrzymanie = długie naciśnięcie)
+ *  strzałki      – przejście do sąsiedniej karty / przycisku (podświetlenie, bez kursora)
+ *  ◀ ▶ na suwaku – zmiana wartości
+ *  OK            – kliknięcie podświetlonego elementu (przytrzymanie = długie naciśnięcie)
  *  P+ / P−       – poprzednia / następna karta (widok)
  *  1–9           – karta o tym numerze
  *  ⏪ ⏩          – przewijanie strony
@@ -48,7 +49,6 @@ class DashboardActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
 
     private lateinit var web: WebView
-    private lateinit var cursor: CursorView
     private lateinit var banner: TextView
     private var path = "lovelace"
     private var views: List<Pair<String, String>> = emptyList()
@@ -56,6 +56,50 @@ class DashboardActivity : Activity() {
     private var cx = 0f
     private var cy = 0f
     private var touchDown = 0L
+    private var okHeld = false
+    private var okDownSent = false
+    private val navJs by lazy { assets.open("nav.js").bufferedReader(Charsets.UTF_8).use { it.readText() } }
+
+    /** Szerokość strony w px (jak okno przeglądarki na PC). */
+    private fun injectViewport() {
+        val w = app.config.pageWidth
+        web.evaluateJavascript(
+            "(function(){var m=document.querySelector('meta[name=viewport]');" +
+                "if(!m){m=document.createElement('meta');m.name='viewport';(document.head||document.documentElement).appendChild(m);}" +
+                "m.setAttribute('content','width=$w');})();", null)
+    }
+
+    private fun injectNav() {
+        web.evaluateJavascript(navJs, null)
+    }
+
+    /** Ruch podświetlenia (wstrzykuje skrypt, gdyby strona go zgubiła). */
+    private fun nav(dir: String) {
+        web.evaluateJavascript("(window.haNav?haNav.move('$dir'):'missing')") { r ->
+            if (r?.contains("missing") == true) { injectViewport(); injectNav() }
+        }
+    }
+
+    /** OK wciśnięte: dotknij środka podświetlonego elementu. */
+    private fun okDown() {
+        okHeld = true
+        okDownSent = false
+        web.evaluateJavascript("(window.haNav?haNav.target():'{}')") { r ->
+            val j = try { JSONObject(org.json.JSONTokener(r).nextValue().toString()) } catch (e: Exception) { JSONObject() }
+            if (!j.optBoolean("ok")) { if (j.length() == 0) injectNav(); return@evaluateJavascript }
+            val scale = web.width / j.optDouble("iw", web.width.toDouble())
+            cx = (j.optDouble("x") * scale).toFloat()
+            cy = (j.optDouble("y") * scale).toFloat()
+            touch(MotionEvent.ACTION_DOWN)
+            okDownSent = true
+            if (!okHeld) touch(MotionEvent.ACTION_UP)
+        }
+    }
+
+    private fun okUp() {
+        okHeld = false
+        if (okDownSent) { touch(MotionEvent.ACTION_UP); okDownSent = false }
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,14 +113,17 @@ class DashboardActivity : Activity() {
             settings.domStorageEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
             settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            // strona układana na szerokość jak na PC (np. 1920 px), a potem dopasowana do ekranu TV
             settings.useWideViewPort = true
             settings.loadWithOverviewMode = true
-            setInitialScale(app.config.zoom)
+            settings.textZoom = 100
             isFocusable = true
             isFocusableInTouchMode = true
             addJavascriptInterface(ExternalApp(), "externalApp")
             webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
+                override fun onPageCommitVisible(view: WebView, url: String) { injectViewport() }
+                override fun onPageFinished(view: WebView, url: String) { injectViewport(); injectNav() }
                 override fun onReceivedError(view: WebView, req: WebResourceRequest, err: WebResourceError) {
                     if (req.isForMainFrame) showBanner("Nie można otworzyć Home Assistanta: ${err.description}", 8000)
                 }
@@ -84,8 +131,6 @@ class DashboardActivity : Activity() {
         }
         root.addView(web, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
-        cursor = CursorView(this)
-        root.addView(cursor, FrameLayout.LayoutParams(dp(34f), dp(40f)))
 
         banner = TextView(this).apply {
             setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f); typeface = Typeface.DEFAULT_BOLD
@@ -107,9 +152,7 @@ class DashboardActivity : Activity() {
         app.ha.listViews(path) { v -> views = v }
 
         root.post {
-            cx = root.width / 2f; cy = root.height / 2f
-            placeCursor()
-            showBanner((intent.getStringExtra("title") ?: "Dashboard") + " · P+/P− karty · OK klik", 4000)
+            showBanner((intent.getStringExtra("title") ?: "Dashboard") + " · strzałki – wybór · OK – kliknij · P+/P− – karty", 5000)
         }
     }
 
@@ -152,15 +195,6 @@ class DashboardActivity : Activity() {
 
     // ---------------- kursor ----------------
 
-    private fun placeCursor() {
-        cursor.translationX = cx
-        cursor.translationY = cy
-        cursor.alpha = 1f
-        cursor.animate().cancel()
-        cursor.animate().alpha(0.25f).setStartDelay(6000).setDuration(800).start()
-        hover()
-    }
-
     private fun obtain(action: Int, source: Int, down: Long, x: Float = cx, y: Float = cy): MotionEvent {
         val props = arrayOf(MotionEvent.PointerProperties().apply {
             id = 0
@@ -170,42 +204,14 @@ class DashboardActivity : Activity() {
         return MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, 1, props, coords, 0, 0, 1f, 1f, 0, 0, source, 0)
     }
 
-    private fun hover() {
-        val e = obtain(MotionEvent.ACTION_HOVER_MOVE, InputDevice.SOURCE_MOUSE, SystemClock.uptimeMillis())
-        web.dispatchGenericMotionEvent(e); e.recycle()
-    }
-
     private fun touch(action: Int) {
         if (action == MotionEvent.ACTION_DOWN) touchDown = SystemClock.uptimeMillis()
         val e = obtain(action, InputDevice.SOURCE_TOUCHSCREEN, touchDown)
         web.dispatchTouchEvent(e); e.recycle()
     }
 
-    /** Przewinięcie kółkiem myszy w miejscu kursora (dir: 1 = w dół). */
-    private fun wheel(dir: Float) {
-        val e = obtain(MotionEvent.ACTION_SCROLL, InputDevice.SOURCE_MOUSE, SystemClock.uptimeMillis())
-        val props = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_MOUSE })
-        val coords = arrayOf(MotionEvent.PointerCoords().apply {
-            x = cx; y = cy; setAxisValue(MotionEvent.AXIS_VSCROLL, -dir)
-        })
-        e.recycle()
-        val s = MotionEvent.obtain(SystemClock.uptimeMillis(), SystemClock.uptimeMillis(), MotionEvent.ACTION_SCROLL, 1,
-            props, coords, 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_MOUSE, 0)
-        web.dispatchGenericMotionEvent(s); s.recycle()
-    }
-
-    private fun move(dx: Int, dy: Int, repeat: Int) {
-        val speed = dp(9f) * (1f + minOf(repeat, 14) * 0.45f) * app.config.cursorSpeed / 100f
-        val w = (web.width - dp(4f)).toFloat()
-        val h = (web.height - dp(4f)).toFloat()
-        val nx = cx + dx * speed
-        val ny = cy + dy * speed
-        // przy górnej/dolnej krawędzi przewijaj stronę
-        if (ny < 0 && dy < 0) wheel(-1.5f)
-        if (ny > h && dy > 0) wheel(1.5f)
-        cx = nx.coerceIn(0f, w)
-        cy = ny.coerceIn(0f, h)
-        placeCursor()
+    private fun scrollPage(dir: Int) {
+        web.evaluateJavascript("window.scrollBy(0, ${dir} * innerHeight * 0.8); setTimeout(function(){window.haNav&&haNav.redraw()},300);", null)
     }
 
     // ---------------- karty (widoki) ----------------
@@ -242,19 +248,19 @@ class DashboardActivity : Activity() {
         }
         val down = e.action == KeyEvent.ACTION_DOWN
         when (e.keyCode) {
-            KeyEvent.KEYCODE_DPAD_LEFT -> { if (down) move(-1, 0, e.repeatCount); return true }
-            KeyEvent.KEYCODE_DPAD_RIGHT -> { if (down) move(1, 0, e.repeatCount); return true }
-            KeyEvent.KEYCODE_DPAD_UP -> { if (down) move(0, -1, e.repeatCount); return true }
-            KeyEvent.KEYCODE_DPAD_DOWN -> { if (down) move(0, 1, e.repeatCount); return true }
+            KeyEvent.KEYCODE_DPAD_LEFT -> { if (down) nav("left"); return true }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> { if (down) nav("right"); return true }
+            KeyEvent.KEYCODE_DPAD_UP -> { if (down) nav("up"); return true }
+            KeyEvent.KEYCODE_DPAD_DOWN -> { if (down) nav("down"); return true }
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                if (down && e.repeatCount == 0) { touch(MotionEvent.ACTION_DOWN); cursor.pressed(true) }
-                if (!down) { touch(MotionEvent.ACTION_UP); cursor.pressed(false) }
+                if (down && e.repeatCount == 0) okDown()
+                if (!down) okUp()
                 return true
             }
             KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> { if (down) goView(viewIndex - 1); return true }
             KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> { if (down) goView(viewIndex + 1); return true }
-            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { if (down) repeat(4) { wheel(1.5f) }; return true }
-            KeyEvent.KEYCODE_MEDIA_REWIND -> { if (down) repeat(4) { wheel(-1.5f) }; return true }
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { if (down) scrollPage(1); return true }
+            KeyEvent.KEYCODE_MEDIA_REWIND -> { if (down) scrollPage(-1); return true }
             in KeyEvent.KEYCODE_1..KeyEvent.KEYCODE_9 -> { if (down) goView(e.keyCode - KeyEvent.KEYCODE_1); return true }
             KeyEvent.KEYCODE_BACK -> {
                 if (!down) {
@@ -266,23 +272,4 @@ class DashboardActivity : Activity() {
         return super.dispatchKeyEvent(e)
     }
 
-    /** Strzałka kursora. */
-    private class CursorView(ctx: Context) : View(ctx) {
-        private var isPressed = false
-        private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
-        private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; style = Paint.Style.STROKE; strokeWidth = 3f }
-        private val pressFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#4DD8FF"); style = Paint.Style.FILL }
-
-        fun pressed(p: Boolean) { isPressed = p; invalidate() }
-
-        override fun onDraw(c: Canvas) {
-            val w = width.toFloat(); val h = height.toFloat()
-            val p = Path().apply {
-                moveTo(2f, 2f); lineTo(2f, h * 0.82f); lineTo(w * 0.28f, h * 0.62f); lineTo(w * 0.48f, h - 2f)
-                lineTo(w * 0.62f, h * 0.92f); lineTo(w * 0.44f, h * 0.56f); lineTo(w * 0.78f, h * 0.56f); close()
-            }
-            c.drawPath(p, if (isPressed) pressFill else fill)
-            c.drawPath(p, stroke)
-        }
-    }
 }
